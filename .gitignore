@@ -38,3 +38,9 @@ _darcs
 data
 work_dirs
 
+DAVIS
+DAVIS-2017-trainval-480p.zip
+data
+__MACOSX/
+outputs/
+apps_data/

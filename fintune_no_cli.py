@@ -5,26 +5,12 @@
 from PIL import Image
 import torch
 import torch.nn as nn
-import gradio as gr
 import numpy as np
 from torch.nn import functional as F
-
+import os
+from pathlib import Path as _P
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
-
-
-class ImageMask(gr.components.Image):
-    """
-    Sets: source="canvas", tool="sketch"
-    """
-
-    is_template = True
-
-    def __init__(self, **kwargs):
-        super().__init__(source="upload", tool="sketch", interactive=True, **kwargs)
-
-    def preprocess(self, x):
-        return super().preprocess(x)
 
 
 class Mask_Weights(nn.Module):
@@ -298,22 +284,35 @@ def inference_scribble(image, image1, image2):
     return output_image[0].resize((224, 224)), output_image[1].resize((224, 224))
 
 
-def inference_finetune(ic_image, ic_mask, image1, image2):
-    print("inference_finetune")
-    # in context image and mask
-    ic_image = np.array(ic_image.convert("RGB"))
-    ic_mask = np.array(ic_mask.convert("RGB"))
+
+#def inference_finetune(predictor, ic_image, ic_mask, image1, image2):
+
+if __name__ == "__main__":
     
-    gt_mask = torch.tensor(ic_mask)[:, :, 0] > 0 
-    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).cuda()
-    # gt_mask = gt_mask.float().unsqueeze(0).flatten(1)
-    
-    sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
+    ROOT_PATH = _P(os.path.dirname(os.path.abspath(__file__)))
+
+    sam_type, sam_ckpt = 'vit_b', 'sam_vit_b.pth'
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     for name, param in sam.named_parameters():
         param.requires_grad = False
     predictor = SamPredictor(sam)
+        
+    print("inference_finetune")
+    # in context image and mask
+    ic_image_path = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Images/01.png"
+    ic_mask_mask = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Annotations/01.png"
+
+    ic_image = cv2.imread(str(ic_image_path))
+    ic_mask = cv2.imread(str(ic_mask_mask)).astype(np.float32)
+
+    ic_mask /= ic_mask.max()
+    ic_mask *= 255.0
+    ic_mask = ic_mask.astype(np.uint8)
+    
+    gt_mask = torch.tensor(ic_mask)[:, :, 0] > 0 
+    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).cuda()
+    # gt_mask = gt_mask.float().unsqueeze(0).flatten(1)
     
     print("======> Obtain Self Location Prior" )
     # Image features encoding
@@ -351,7 +350,7 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
     mask_weights = Mask_Weights().cuda()
     # mask_weights = Mask_Weights()
     mask_weights.train()
-    train_epoch = 1000
+    train_epoch = 100
     optimizer = torch.optim.AdamW(mask_weights.parameters(), lr=1e-3, eps=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, train_epoch)
 
@@ -383,6 +382,11 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
             print('LR: {:.6f}, Dice_Loss: {:.4f}, Focal_Loss: {:.4f}'.format(current_lr, dice_loss.item(), focal_loss.item()))
 
 
+    print('Train Epoch: {:} / {:}'.format(train_idx, train_epoch))
+    current_lr = scheduler.get_last_lr()[0]
+    print('LR: {:.6f}, Dice_Loss: {:.4f}, Focal_Loss: {:.4f}'.format(current_lr, dice_loss.item(), focal_loss.item()))
+
+
     mask_weights.eval()
     weights = torch.cat((1 - mask_weights.weights.sum(0).unsqueeze(0), mask_weights.weights), dim=0)
     weights_np = weights.detach().cpu().numpy()
@@ -390,9 +394,14 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
 
     print('======> Start Testing')
     output_image = []
-    
-    for test_image in [image1, image2]:
-        test_image = np.array(test_image.convert("RGB"))
+    from pathlib import Path as _P
+    from tqdm import tqdm
+
+    test_images_list = list((ROOT_PATH / 'apps_data/few_shot_example/few_shot_test').glob('*.png'))
+    print('======> Num Test Images found:', len(test_images_list))
+
+    for test_image_path in tqdm(test_images_list):
+        test_image = cv2.imread(str(test_image_path))
         
         # Image feature encoding
         predictor.set_image(test_image)
@@ -466,88 +475,10 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
         mask_colors[final_mask, :] = np.array([[128, 0, 0]])
         output_image.append(Image.fromarray((mask_colors * 0.6 + test_image * 0.4).astype('uint8'), 'RGB'))
     
-    return output_image[0].resize((224, 224)), output_image[1].resize((224, 224))
 
-if __name__ == "__main__":
-    description = """
-    <div style="text-align: center; font-weight: bold;">
-        <span style="font-size: 18px" id="paper-info">
-            [<a href="https://github.com/ZrrSkywalker/Personalize-SAM" target="_blank"><font color='black'>Github</font></a>]
-            [<a href="https://arxiv.org/pdf/2305.03048.pdf" target="_blank"><font color='black'>Paper</font></a>]
-        </span>
-    </div>
-    """
+    Results = _P('apps_data/few_shot_example_outputs/few_shot_test/Results')
+    Results.mkdir(parents=True, exist_ok=True)
+    print('======> Save Results to', Results)
+    for idx, image in enumerate(output_image):
+        image.save(Results / f'{idx}.png')
 
-    main = gr.Interface(
-        fn=inference,
-        inputs=[
-            gr.Image(type="pil", label="in context image",),
-            gr.Image(type="pil", label="in context mask"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.outputs.Image(type="pil", label="output image1"),
-            gr.outputs.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
-    )
-
-    main_scribble = gr.Interface(
-        fn=inference_scribble,
-        inputs=[
-            gr.ImageMask(label="[Stroke] Draw on Image", type="pil"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.outputs.Image(type="pil", label="output image1"),
-            gr.outputs.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
-    )
-
-    main_finetune = gr.Interface(
-        fn=inference_finetune,
-        inputs=[
-            gr.Image(type="pil", label="in context image"),
-            gr.Image(type="pil", label="in context mask"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.components.Image(type="pil", label="output image1"),
-            gr.components.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
-    )
-
-    demo = gr.Blocks()
-    with demo:
-        gr.TabbedInterface(
-            [main, main_scribble, main_finetune], 
-            ["Personalize-SAM", "Personalize-SAM-Scribble", "Personalize-SAM-F"],
-        )
-
-    demo.launch(share=False, debug=True)

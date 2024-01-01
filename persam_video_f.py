@@ -27,7 +27,7 @@ def main(args):
     palette = Image.open(path.expanduser(os.path.join(args.davis_path, 'Annotations/480p/bike-packing/00000.png'))).getpalette()
 
     # Load SAM
-    sam_type, sam_ckpt = 'vit_h', 'sam_vit_h_4b8939.pth'
+    sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
     for name, param in sam.named_parameters():
         param.requires_grad = False

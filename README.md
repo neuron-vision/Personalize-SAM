@@ -53,12 +53,12 @@ Similar to Segment Anything, our code requires `pytorch>=1.7` and `torchvision>=
 
 
 ### Preparation
-Please download our constructed dataset **PerSeg** for personalized segmentation from [Google Drive](https://drive.google.com/file/d/18TbrwhZtAPY5dlaoEqkPa5h08G9Rjcio/view?usp=sharing) or [Baidu Yun](https://pan.baidu.com/s/1X-czD-FYW0ELlk2x90eTLg) (code `222k`), and the pre-trained weights of SAM from [here](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth). Then, unzip the dataset file and organize them as
+Please download our constructed dataset **PerSeg** for personalized segmentation from [Google Drive](https://drive.google.com/file/d/18TbrwhZtAPY5dlaoEqkPa5h08G9Rjcio/view?usp=sharing) or [Baidu Yun](https://pan.baidu.com/s/1X-czD-FYW0ELlk2x90eTLg) (code `222k`), and the pre-trained weights of SAM from [here](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b.pth). Then, unzip the dataset file and organize them as
 ```
 data/
 |–– Annotations/
 |–– Images/
-sam_vit_h_4b8939.pth
+sam_vit_b.pth
 ```
 Please download 480p [TrainVal](https://data.vision.ee.ethz.ch/csergi/share/davis/DAVIS-2017-trainval-480p.zip) split of DAVIS 2017. Then decompress the file to `DAVIS/2017` and organize them as
 ```

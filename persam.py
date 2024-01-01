@@ -21,9 +21,9 @@ def get_arguments():
 
     parser.add_argument('--data', type=str, default='./data')
     parser.add_argument('--outdir', type=str, default='persam')
-    parser.add_argument('--ckpt', type=str, default='sam_vit_h_4b8939.pth')
+    parser.add_argument('--ckpt', type=str, default='sam_vit_b.pth')
     parser.add_argument('--ref_idx', type=str, default='00')
-    parser.add_argument('--sam_type', type=str, default='vit_h')
+    parser.add_argument('--sam_type', type=str, default='vit_b')
     
     args = parser.parse_args()
     return args
@@ -92,92 +92,105 @@ def persam(args, obj_name, images_path, masks_path, output_path):
     target_feat = target_embedding / target_embedding.norm(dim=-1, keepdim=True)
     target_embedding = target_embedding.unsqueeze(0)
 
+    from timeit import default_timer
 
-    print('======> Start Testing')
-    for test_idx in tqdm(range(len(os.listdir(test_images_path)))):
-    
-        # Load test image
-        test_idx = '%02d' % test_idx
-        test_image_path = test_images_path + '/' + test_idx + '.jpg'
-        test_image = cv2.imread(test_image_path)
-        test_image = cv2.cvtColor(test_image, cv2.COLOR_BGR2RGB)
+    total_runtime = 0
+    number_processed = 0
 
-        # Image feature encoding
-        predictor.set_image(test_image)
-        test_feat = predictor.features.squeeze()
+    try:
+        print('======> Start Testing')
+        for test_idx in tqdm(range(len(os.listdir(test_images_path)))):
+            
+            start_runtime = default_timer() # Test rutime without visualization.
+            number_processed += 1
+            # Load test image
+            test_idx = '%02d' % test_idx
+            test_image_path = test_images_path + '/' + test_idx + '.jpg'
+            test_image = cv2.imread(test_image_path)
+            test_image = cv2.cvtColor(test_image, cv2.COLOR_BGR2RGB)
 
-        # Cosine similarity
-        C, h, w = test_feat.shape
-        test_feat = test_feat / test_feat.norm(dim=0, keepdim=True)
-        test_feat = test_feat.reshape(C, h * w)
-        sim = target_feat @ test_feat
+            # Image feature encoding
+            predictor.set_image(test_image)
+            test_feat = predictor.features.squeeze()
 
-        sim = sim.reshape(1, 1, h, w)
-        sim = F.interpolate(sim, scale_factor=4, mode="bilinear")
-        sim = predictor.model.postprocess_masks(
-                        sim,
-                        input_size=predictor.input_size,
-                        original_size=predictor.original_size).squeeze()
+            # Cosine similarity
+            C, h, w = test_feat.shape
+            test_feat = test_feat / test_feat.norm(dim=0, keepdim=True)
+            test_feat = test_feat.reshape(C, h * w)
+            sim = target_feat @ test_feat
 
-        # Positive-negative location prior
-        topk_xy_i, topk_label_i, last_xy_i, last_label_i = point_selection(sim, topk=1)
-        topk_xy = np.concatenate([topk_xy_i, last_xy_i], axis=0)
-        topk_label = np.concatenate([topk_label_i, last_label_i], axis=0)
+            sim = sim.reshape(1, 1, h, w)
+            sim = F.interpolate(sim, scale_factor=4, mode="bilinear")
+            sim = predictor.model.postprocess_masks(
+                            sim,
+                            input_size=predictor.input_size,
+                            original_size=predictor.original_size).squeeze()
 
-        # Obtain the target guidance for cross-attention layers
-        sim = (sim - sim.mean()) / torch.std(sim)
-        sim = F.interpolate(sim.unsqueeze(0).unsqueeze(0), size=(64, 64), mode="bilinear")
-        attn_sim = sim.sigmoid_().unsqueeze(0).flatten(3)
+            # Positive-negative location prior
+            topk_xy_i, topk_label_i, last_xy_i, last_label_i = point_selection(sim, topk=1)
+            topk_xy = np.concatenate([topk_xy_i, last_xy_i], axis=0)
+            topk_label = np.concatenate([topk_label_i, last_label_i], axis=0)
 
-        # First-step prediction
-        masks, scores, logits, _ = predictor.predict(
-            point_coords=topk_xy, 
-            point_labels=topk_label, 
-            multimask_output=False,
-            attn_sim=attn_sim,  # Target-guided Attention
-            target_embedding=target_embedding  # Target-semantic Prompting
-        )
-        best_idx = 0
+            # Obtain the target guidance for cross-attention layers
+            sim = (sim - sim.mean()) / torch.std(sim)
+            sim = F.interpolate(sim.unsqueeze(0).unsqueeze(0), size=(64, 64), mode="bilinear")
+            attn_sim = sim.sigmoid_().unsqueeze(0).flatten(3)
 
-        # Cascaded Post-refinement-1
-        masks, scores, logits, _ = predictor.predict(
-                    point_coords=topk_xy,
-                    point_labels=topk_label,
-                    mask_input=logits[best_idx: best_idx + 1, :, :], 
-                    multimask_output=True)
-        best_idx = np.argmax(scores)
+            # First-step prediction
+            masks, scores, logits, _ = predictor.predict(
+                point_coords=topk_xy, 
+                point_labels=topk_label, 
+                multimask_output=False,
+                attn_sim=attn_sim,  # Target-guided Attention
+                target_embedding=target_embedding  # Target-semantic Prompting
+            )
+            best_idx = 0
 
-        # Cascaded Post-refinement-2
-        y, x = np.nonzero(masks[best_idx])
-        x_min = x.min()
-        x_max = x.max()
-        y_min = y.min()
-        y_max = y.max()
-        input_box = np.array([x_min, y_min, x_max, y_max])
-        masks, scores, logits, _ = predictor.predict(
-            point_coords=topk_xy,
-            point_labels=topk_label,
-            box=input_box[None, :],
-            mask_input=logits[best_idx: best_idx + 1, :, :], 
-            multimask_output=True)
-        best_idx = np.argmax(scores)
+            # Cascaded Post-refinement-1
+            masks, scores, logits, _ = predictor.predict(
+                        point_coords=topk_xy,
+                        point_labels=topk_label,
+                        mask_input=logits[best_idx: best_idx + 1, :, :], 
+                        multimask_output=True)
+            best_idx = np.argmax(scores)
 
-        # Save masks
-        plt.figure(figsize=(10, 10))
-        plt.imshow(test_image)
-        show_mask(masks[best_idx], plt.gca())
-        show_points(topk_xy, topk_label, plt.gca())
-        plt.title(f"Mask {best_idx}", fontsize=18)
-        plt.axis('off')
-        vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}.jpg')
-        with open(vis_mask_output_path, 'wb') as outfile:
-            plt.savefig(outfile, format='jpg')
+            # Cascaded Post-refinement-2
+            y, x = np.nonzero(masks[best_idx])
+            x_min = x.min()
+            x_max = x.max()
+            y_min = y.min()
+            y_max = y.max()
+            input_box = np.array([x_min, y_min, x_max, y_max])
+            masks, scores, logits, _ = predictor.predict(
+                point_coords=topk_xy,
+                point_labels=topk_label,
+                box=input_box[None, :],
+                mask_input=logits[best_idx: best_idx + 1, :, :], 
+                multimask_output=True)
+            best_idx = np.argmax(scores)
 
-        final_mask = masks[best_idx]
-        mask_colors = np.zeros((final_mask.shape[0], final_mask.shape[1], 3), dtype=np.uint8)
-        mask_colors[final_mask, :] = np.array([[0, 0, 128]])
-        mask_output_path = os.path.join(output_path, test_idx + '.png')
-        cv2.imwrite(mask_output_path, mask_colors)
+            total_runtime += default_timer() - start_runtime  # Test rutime without visualization.
+
+            # Save masks
+            plt.figure(figsize=(10, 10))
+            plt.imshow(test_image)
+            show_mask(masks[best_idx], plt.gca())
+            show_points(topk_xy, topk_label, plt.gca())
+            plt.title(f"Mask {best_idx}", fontsize=18)
+            plt.axis('off')
+            vis_mask_output_path = os.path.join(output_path, f'vis_mask_{test_idx}.jpg')
+            with open(vis_mask_output_path, 'wb') as outfile:
+                plt.savefig(outfile, format='jpg')
+
+            final_mask = masks[best_idx]
+            mask_colors = np.zeros((final_mask.shape[0], final_mask.shape[1], 3), dtype=np.uint8)
+            mask_colors[final_mask, :] = np.array([[0, 0, 128]])
+            mask_output_path = os.path.join(output_path, test_idx + '.png')
+            cv2.imwrite(mask_output_path, mask_colors)
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+
+    print(f"FPS = {number_processed / total_runtime:.2f}")
 
 
 def point_selection(mask_sim, topk=1):
