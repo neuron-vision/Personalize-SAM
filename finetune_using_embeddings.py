@@ -1,6 +1,7 @@
 # --------------------------------------------------------
-# PersonalizeSAM -- Personalize Segment Anything Model with One Shot
 # Licensed under The MIT License [see LICENSE for details]
+# This script uses the embeddings from the SAM model to finetune the segmentation model
+# Written by Ishay Tubi, Neuron Vision Ltd.
 # --------------------------------------------------------
 from PIL import Image
 import torch
@@ -11,6 +12,8 @@ import os
 from pathlib import Path as _P
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
+from pathlib import Path as _P
+from tqdm import tqdm
 
 
 class Mask_Weights(nn.Module):
@@ -350,7 +353,7 @@ if __name__ == "__main__":
     mask_weights = Mask_Weights().cuda()
     # mask_weights = Mask_Weights()
     mask_weights.train()
-    train_epoch = 100
+    train_epoch = 1000
     optimizer = torch.optim.AdamW(mask_weights.parameters(), lr=1e-3, eps=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, train_epoch)
 
@@ -394,8 +397,6 @@ if __name__ == "__main__":
 
     print('======> Start Testing')
     output_image = []
-    from pathlib import Path as _P
-    from tqdm import tqdm
 
     test_images_list = list((ROOT_PATH / 'apps_data/few_shot_example/few_shot_test').glob('*.png'))
     print('======> Num Test Images found:', len(test_images_list))
