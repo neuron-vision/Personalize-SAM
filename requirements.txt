@@ -8,3 +8,6 @@ gradio
 opencv-python
 torch
 timm
+gradio
+
+
