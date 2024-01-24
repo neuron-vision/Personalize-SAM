@@ -6,3 +6,5 @@ torch==2.0.0
 timm
 gradio
 opencv-python
+torch
+timm
