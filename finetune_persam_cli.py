@@ -95,7 +95,7 @@ def inference(ic_image, ic_mask, image1, image2):
     ic_mask = np.array(ic_mask.convert("RGB"))
     
     sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(device)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
     
@@ -195,7 +195,7 @@ def inference_scribble(image, image1, image2):
     ic_mask = np.array(ic_mask.convert("RGB"))
     print(f"got image with shape {ic_image.shape} and mask with shape {ic_mask.shape}")
     sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(device)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
     
@@ -294,8 +294,9 @@ if __name__ == "__main__":
     
     ROOT_PATH = _P(os.path.dirname(os.path.abspath(__file__)))
 
+    device = 'mps'
     sam_type, sam_ckpt = 'vit_b', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(device)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     for name, param in sam.named_parameters():
         param.requires_grad = False
@@ -303,8 +304,8 @@ if __name__ == "__main__":
         
     print("inference_finetune")
     # in context image and mask
-    ic_image_path = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Images/01.png"
-    ic_mask_mask = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Annotations/01.png"
+    ic_image_path = "/Users/oranshayer/code/rapid_workspace/Personalize-SAM/examples/cat_00.jpg"
+    ic_mask_mask = "/Users/oranshayer/code/rapid_workspace/Personalize-SAM/examples/cat_00.png"
 
     ic_image = cv2.imread(str(ic_image_path))
     ic_mask = cv2.imread(str(ic_mask_mask)).astype(np.float32)
@@ -314,7 +315,7 @@ if __name__ == "__main__":
     ic_mask = ic_mask.astype(np.uint8)
     
     gt_mask = torch.tensor(ic_mask)[:, :, 0] > 0 
-    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).cuda()
+    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).to(device)
     # gt_mask = gt_mask.float().unsqueeze(0).flatten(1)
     
     print("======> Obtain Self Location Prior" )
@@ -334,7 +335,7 @@ if __name__ == "__main__":
     # Cosine similarity
     h, w, C = ref_feat.shape
     target_feat = target_feat / target_feat.norm(dim=-1, keepdim=True)
-    ref_feat = ref_feat / ref_feat.norm(dim=-1, keepdim=True)
+    ref_feat = ref_feat / ref_feat.norm(dim=-1, keepdim=True) 
     ref_feat = ref_feat.permute(2, 0, 1).reshape(C, h * w)
     sim = target_feat @ ref_feat
 
@@ -350,7 +351,7 @@ if __name__ == "__main__":
 
     print('======> Start Training')
     # Learnable mask weights
-    mask_weights = Mask_Weights().cuda()
+    mask_weights = Mask_Weights().to(device)
     # mask_weights = Mask_Weights()
     mask_weights.train()
     train_epoch = 1000
