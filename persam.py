@@ -13,6 +13,7 @@ warnings.filterwarnings('ignore')
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if os.uname().sysname.lower()  == 'darwin' else 'cpu'
 
 
 def get_arguments():
@@ -69,7 +70,7 @@ def persam(args, obj_name, images_path, masks_path, output_path):
     print("======> Load SAM" )
     if args.sam_type == 'vit_h':
         sam_type, sam_ckpt = 'vit_h', 'sam_vit_h_4b8939.pth'
-        sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+        sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     elif args.sam_type == 'vit_t':
         sam_type, sam_ckpt = 'vit_t', 'weights/mobile_sam.pt'
         device = "cuda" if torch.cuda.is_available() else "cpu"

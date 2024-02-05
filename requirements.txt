@@ -1,8 +1,7 @@
 matplotlib
 tqdm
 numpy
-opencv-python
-torch==2.0.0
 timm
-gradio
 opencv-python
+torch
+gradio==3.50

@@ -14,6 +14,7 @@ warnings.filterwarnings('ignore')
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if os.uname().sysname.lower()  == 'darwin' else 'cpu'
 
 
 def get_arguments():
@@ -71,13 +72,13 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
     ref_mask = cv2.cvtColor(ref_mask, cv2.COLOR_BGR2RGB)
 
     gt_mask = torch.tensor(ref_mask)[:, :, 0] > 0 
-    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).cuda()
+    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).to(DEVICE)
 
     
     print("======> Load SAM" )
     if args.sam_type == 'vit_h':
         sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-        sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+        sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     elif args.sam_type == 'vit_t':
         sam_type, sam_ckpt = 'vit_t', 'weights/mobile_sam.pt'
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -124,7 +125,7 @@ def persam_f(args, obj_name, images_path, masks_path, output_path):
 
     print('======> Start Training')
     # Learnable mask weights
-    mask_weights = Mask_Weights().cuda()
+    mask_weights = Mask_Weights().to(DEVICE)
     mask_weights.train()
     
     optimizer = torch.optim.AdamW(mask_weights.parameters(), lr=args.lr, eps=1e-4)

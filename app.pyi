@@ -12,7 +12,7 @@ from torch.nn import functional as F
 from show import *
 from per_segment_anything import sam_model_registry, SamPredictor
 
-DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if os.uname().sysname.lower()  == 'darwin' else 'cpu'
+from gradio.events import Dependency
 
 class ImageMask(gr.components.Image):
     """
@@ -106,7 +106,7 @@ def inference(ic_image, ic_mask, image1, image2):
     ic_image = np.array(ic_image.convert("RGB"))
     ic_mask = np.array(ic_mask.convert("RGB"))
     
-    sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
+    sam_type, sam_ckpt = 'vit_h', 'sam_vit_h_4b8939.pth'
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
@@ -205,8 +205,8 @@ def inference_scribble(image, image1, image2):
     ic_mask = image["mask"]
     ic_image = np.array(ic_image.convert("RGB"))
     ic_mask = np.array(ic_mask.convert("RGB"))
-    print(f"got image with shape {ic_image.shape} and mask with shape {ic_mask.shape}")
-    sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
+    
+    sam_type, sam_ckpt = 'vit_h', 'sam_vit_h_4b8939.pth'
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
@@ -300,7 +300,6 @@ def inference_scribble(image, image1, image2):
 
 
 def inference_finetune(ic_image, ic_mask, image1, image2):
-    print("inference_finetune")
     # in context image and mask
     ic_image = np.array(ic_image.convert("RGB"))
     ic_mask = np.array(ic_mask.convert("RGB"))
@@ -309,7 +308,7 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
     gt_mask = gt_mask.float().unsqueeze(0).flatten(1).to(DEVICE)
     # gt_mask = gt_mask.float().unsqueeze(0).flatten(1)
     
-    sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
+    sam_type, sam_ckpt = 'vit_h', 'sam_vit_h_4b8939.pth'
     sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     for name, param in sam.named_parameters():
@@ -469,86 +468,87 @@ def inference_finetune(ic_image, ic_mask, image1, image2):
     
     return output_image[0].resize((224, 224)), output_image[1].resize((224, 224))
 
-if __name__ == "__main__":
-    description = """
-    <div style="text-align: center; font-weight: bold;">
-        <span style="font-size: 18px" id="paper-info">
-            [<a href="https://github.com/ZrrSkywalker/Personalize-SAM" target="_blank"><font color='black'>Github</font></a>]
-            [<a href="https://arxiv.org/pdf/2305.03048.pdf" target="_blank"><font color='black'>Paper</font></a>]
-        </span>
-    </div>
-    """
 
-    main = gr.Interface(
-        fn=inference,
-        inputs=[
-            gr.Image(type="pil", label="in context image",),
-            gr.Image(type="pil", label="in context mask"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.outputs.Image(type="pil", label="output image1"),
-            gr.outputs.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
+description = """
+<div style="text-align: center; font-weight: bold;">
+    <span style="font-size: 18px" id="paper-info">
+        [<a href="https://github.com/ZrrSkywalker/Personalize-SAM" target="_blank"><font color='black'>Github</font></a>]
+        [<a href="https://arxiv.org/pdf/2305.03048.pdf" target="_blank"><font color='black'>Paper</font></a>]
+    </span>
+</div>
+"""
+
+main = gr.Interface(
+    fn=inference,
+    inputs=[
+        gr.Image(type="pil", label="in context image",),
+        gr.Image(type="pil", label="in context mask"),
+        gr.Image(type="pil", label="test image1"),
+        gr.Image(type="pil", label="test image2"),  
+    ],
+    outputs=[
+        gr.outputs.Image(type="pil", label="output image1"),
+        gr.outputs.Image(type="pil", label="output image2"),
+    ],
+    allow_flagging="never",
+    title="Personalize Segment Anything Model with 1 Shot",
+    description=description,
+    examples=[
+        ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
+        ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
+        ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
+    ]
+)
+
+main_scribble = gr.Interface(
+    fn=inference_scribble,
+    inputs=[
+        gr.ImageMask(label="[Stroke] Draw on Image", type="pil"),
+        gr.Image(type="pil", label="test image1"),
+        gr.Image(type="pil", label="test image2"),  
+    ],
+    outputs=[
+        gr.outputs.Image(type="pil", label="output image1"),
+        gr.outputs.Image(type="pil", label="output image2"),
+    ],
+    allow_flagging="never",
+    title="Personalize Segment Anything Model with 1 Shot",
+    description=description,
+    examples=[
+        ["./examples/cat_00.jpg", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
+        ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
+        ["./examples/duck_toy_00.jpg", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
+    ]
+)
+
+main_finetune = gr.Interface(
+    fn=inference_finetune,
+    inputs=[
+        gr.Image(type="pil", label="in context image"),
+        gr.Image(type="pil", label="in context mask"),
+        gr.Image(type="pil", label="test image1"),
+        gr.Image(type="pil", label="test image2"),  
+    ],
+    outputs=[
+        gr.components.Image(type="pil", label="output image1"),
+        gr.components.Image(type="pil", label="output image2"),
+    ],
+    allow_flagging="never",
+    title="Personalize Segment Anything Model with 1 Shot",
+    description=description,
+    examples=[
+        ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
+        ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
+        ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
+    ]
+)
+
+
+demo = gr.Blocks()
+with demo:
+    gr.TabbedInterface(
+        [main, main_scribble, main_finetune], 
+        ["Personalize-SAM", "Personalize-SAM-Scribble", "Personalize-SAM-F"],
     )
 
-    main_scribble = gr.Interface(
-        fn=inference_scribble,
-        inputs=[
-            gr.ImageMask(label="[Stroke] Draw on Image", type="pil"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.outputs.Image(type="pil", label="output image1"),
-            gr.outputs.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
-    )
-
-    main_finetune = gr.Interface(
-        fn=inference_finetune,
-        inputs=[
-            gr.Image(type="pil", label="in context image"),
-            gr.Image(type="pil", label="in context mask"),
-            gr.Image(type="pil", label="test image1"),
-            gr.Image(type="pil", label="test image2"),  
-        ],
-        outputs=[
-            gr.components.Image(type="pil", label="output image1"),
-            gr.components.Image(type="pil", label="output image2"),
-        ],
-        allow_flagging="never",
-        title="Personalize Segment Anything Model with 1 Shot",
-        description=description,
-        examples=[
-            ["./examples/cat_00.jpg", "./examples/cat_00.png", "./examples/cat_01.jpg", "./examples/cat_02.jpg"],
-            ["./examples/colorful_sneaker_00.jpg", "./examples/colorful_sneaker_00.png", "./examples/colorful_sneaker_01.jpg", "./examples/colorful_sneaker_02.jpg"],
-            ["./examples/duck_toy_00.jpg", "./examples/duck_toy_00.png", "./examples/duck_toy_01.jpg", "./examples/duck_toy_02.jpg"],
-        ]
-    )
-
-    demo = gr.Blocks()
-    with demo:
-        gr.TabbedInterface(
-            [main, main_scribble, main_finetune], 
-            ["Personalize-SAM", "Personalize-SAM-Scribble", "Personalize-SAM-F"],
-        )
-
-    demo.launch(share=False, debug=True)
+demo.launch(share=True)
