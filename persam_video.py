@@ -9,6 +9,9 @@ from per_segment_anything import SamPredictor, sam_model_registry
 from davis2017.davis import DAVISTestDataset, all_to_onehot
 from eval_video import eval_davis_result
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if os.uname().sysname.lower()  == 'darwin' else 'cpu'
+
+
 def main(args):
     if args.eval:
         eval_davis_result(args.output_path, args.davis_path)
@@ -22,7 +25,7 @@ def main(args):
 
     # Load SAM
     sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     predictor = SamPredictor(sam)
 
     # Start eval

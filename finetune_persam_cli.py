@@ -15,6 +15,7 @@ from per_segment_anything import sam_model_registry, SamPredictor
 from pathlib import Path as _P
 from tqdm import tqdm
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'mps' if os.uname().sysname.lower()  == 'darwin' else 'cpu'
 
 class Mask_Weights(nn.Module):
     def __init__(self):
@@ -95,7 +96,7 @@ def inference(ic_image, ic_mask, image1, image2):
     ic_mask = np.array(ic_mask.convert("RGB"))
     
     sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
     
@@ -195,7 +196,7 @@ def inference_scribble(image, image1, image2):
     ic_mask = np.array(ic_mask.convert("RGB"))
     print(f"got image with shape {ic_image.shape} and mask with shape {ic_mask.shape}")
     sam_type, sam_ckpt = 'vit_h', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     predictor = SamPredictor(sam)
     
@@ -291,11 +292,12 @@ def inference_scribble(image, image1, image2):
 #def inference_finetune(predictor, ic_image, ic_mask, image1, image2):
 
 if __name__ == "__main__":
+    import cv2
     
     ROOT_PATH = _P(os.path.dirname(os.path.abspath(__file__)))
 
     sam_type, sam_ckpt = 'vit_b', 'sam_vit_b.pth'
-    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).cuda()
+    sam = sam_model_registry[sam_type](checkpoint=sam_ckpt).to(DEVICE)
     # sam = sam_model_registry[sam_type](checkpoint=sam_ckpt)
     for name, param in sam.named_parameters():
         param.requires_grad = False
@@ -303,18 +305,21 @@ if __name__ == "__main__":
         
     print("inference_finetune")
     # in context image and mask
-    ic_image_path = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Images/01.png"
-    ic_mask_mask = ROOT_PATH / "apps_data/few_shot_example/few_shot_train/Annotations/01.png"
+    ic_image_path = ROOT_PATH.parent / "apps_data/few_shot_example/few_shot_train/Images/01.png"
+    ic_mask_mask = ROOT_PATH.parent / "apps_data/few_shot_example/few_shot_train/Annotations/01.png"
+
+    assert ic_image_path.exists(), f"ic_image_path {ic_image_path} does not exist"
+    assert ic_mask_mask.exists(), f"ic_mask_mask {ic_mask_mask} does not exist"
 
     ic_image = cv2.imread(str(ic_image_path))
     ic_mask = cv2.imread(str(ic_mask_mask)).astype(np.float32)
 
-    ic_mask /= ic_mask.max()
-    ic_mask *= 255.0
+    ic_mask /= ic_mask.max()  # Normalize to [0, 1]
+    ic_mask *= 255.0  # Normalize to [0, 255]
     ic_mask = ic_mask.astype(np.uint8)
     
     gt_mask = torch.tensor(ic_mask)[:, :, 0] > 0 
-    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).cuda()
+    gt_mask = gt_mask.float().unsqueeze(0).flatten(1).to(DEVICE)
     # gt_mask = gt_mask.float().unsqueeze(0).flatten(1)
     
     print("======> Obtain Self Location Prior" )
@@ -350,7 +355,7 @@ if __name__ == "__main__":
 
     print('======> Start Training')
     # Learnable mask weights
-    mask_weights = Mask_Weights().cuda()
+    mask_weights = Mask_Weights().to(DEVICE)
     # mask_weights = Mask_Weights()
     mask_weights.train()
     train_epoch = 1000
@@ -384,11 +389,9 @@ if __name__ == "__main__":
             current_lr = scheduler.get_last_lr()[0]
             print('LR: {:.6f}, Dice_Loss: {:.4f}, Focal_Loss: {:.4f}'.format(current_lr, dice_loss.item(), focal_loss.item()))
 
-
     print('Train Epoch: {:} / {:}'.format(train_idx, train_epoch))
     current_lr = scheduler.get_last_lr()[0]
     print('LR: {:.6f}, Dice_Loss: {:.4f}, Focal_Loss: {:.4f}'.format(current_lr, dice_loss.item(), focal_loss.item()))
-
 
     mask_weights.eval()
     weights = torch.cat((1 - mask_weights.weights.sum(0).unsqueeze(0), mask_weights.weights), dim=0)
